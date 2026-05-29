@@ -88,7 +88,7 @@ The script calculates **precision**, **recall**, and **F score**. Here is how it
 
 ### 3a. Prepare Predicted Annotations
 
-1. Take the `predicted_annotations` file (tab-delimited)
+1. Take the `predicted_annotations` file (tab-delimited). Please note that this program **doesn't take score into consideration**. If you want to use a score cutoff, please preprocess the file to include only the annotations that meet the cutoff.
 2. Remove annotations matching the `existing_annotations` file
 3. Remove annotations to binding (`GO:0005488`) and protein binding (`GO:0005515`)
 4. Remove root terms: `GO:0008150`, `GO:0005575`, `GO:0003674`
