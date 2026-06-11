@@ -166,6 +166,177 @@ perl scripts/FPR_calculations.pl \
 
 ---
 
+## Python Wrapper
+
+The repository also includes `fpr_wrapper.py`, which runs both core Perl steps:
+it creates `goparents` and the `gocheck_do_not_annotate` term list from a GO
+OBO file, normalizes prediction input, and then calls `FPR_calculations.pl`.
+
+The metric script already removes redundant parent terms from both predicted
+and reference annotations before mapping, so the wrapper does not duplicate
+that filtering logic.
+
+Two Python metric implementations are also available and can be passed with
+`--metric-perl-script`:
+
+| Script | Behavior |
+|--------|----------|
+| `fpr_metric_python_equiv.py` | Python port of the current `FPR_calculations.pl` logic, preserving the same filtering and mapping behavior |
+| `fpr_metric_python_fast.py` | Optimized Python implementation of the same metric using faster non-redundancy filtering and per-protein mapping |
+
+Prediction input can be TSV or CSV. Plain TSV files are passed directly to the
+metric script without Python parsing. CSV files, and TSV files with a header row, are
+streamed line-by-line into a temporary two-column TSV. The wrapper auto-detects
+the delimiter by default, or you can force it with `--predicted-format tsv` or
+`--predicted-format csv`.
+
+### Evaluate One Prediction File
+
+```bash
+python fpr_wrapper.py \
+  -p Files/test_predicted \
+  -i go-basic.obo \
+  -t Files/test_existing_annotations \
+  -r Files/test_new_annotations \
+  --goparents-output goparents \
+  --do-not-annotate-output GO_do_no_annotate_list \
+  --map-output test.map \
+  --fpr-output test.FPR \
+  --log-level INFO \
+  -o summary.tsv
+```
+
+The wrapper first runs `findGOparents_OBO.pl` on `go-basic.obo`. If
+`--goparents-output` is omitted, the generated lookup file is kept only in a
+temporary directory for that run. It also extracts OBO terms marked
+`subset: gocheck_do_not_annotate` into the same two-column format as
+`Files/GO_do_no_annotate_list`. Use `--do-not-annotate-output` to keep that
+generated file, or `--do-not-annotate` to provide a precomputed list. It then
+normalizes the prediction file to the TSV format expected by the metric script
+and calls the selected Perl or Python metric implementation.
+
+`summary.tsv` contains one row with `filename`, `average_precision`,
+`average_recall`, and `F_score`. `--fpr-output` preserves the full metric STDOUT
+report, including per-protein precision and recall.
+
+Perl STDERR is suppressed by default to avoid very large per-annotation logs on
+large runs. Use `--perl-stderr-log run.log` to keep it. The wrapper logs stage
+progress and aggregate E/L/M/U/Z counts through Python's logging module; use
+`--log-level DEBUG` for more detail.
+
+To use the optimized Python metric script with the wrapper, add:
+
+```bash
+--metric-perl-script fpr_metric_python_fast.py
+```
+
+### Prepare GO Helper Artifacts Only
+
+The wrapper can also generate `goparents` and the do-not-annotate list without
+running a metric. This is useful before running `fpr_metric_sweep.py`, where
+the ontology artifacts are supplied directly.
+
+```bash
+python fpr_wrapper.py \
+  -i go-basic.obo \
+  --goparents-output goparents \
+  --do-not-annotate-output GO_do_no_annotate_list
+```
+
+In this artifact-only mode, prediction files, existing annotations, and new
+annotations are not required. You can generate only one artifact by providing
+only `--goparents-output` or only `--do-not-annotate-output`.
+
+### Evaluate a Directory of Prediction Files
+
+```bash
+python fpr_wrapper.py \
+  -d prediction_dir \
+  -i go-basic.obo \
+  -t Files/test_existing_annotations \
+  -r Files/test_new_annotations \
+  -o directory_summary.tsv
+```
+
+Directory mode recursively evaluates every file under `prediction_dir`.
+It does not write per-protein mapping files or individual-protein summaries.
+The output summary table has one row per input filename and aggregate metric
+columns: `average_precision`, `average_recall`, and `F_score`.
+
+Use `--glob` to restrict recursive input selection, for example
+`--glob '*.csv'`.
+
+---
+
+## Threshold Sweep Metric
+
+`fpr_metric_sweep.py` evaluates scored predictions over a user-defined
+threshold grid and writes one row per prediction file, threshold, and GO
+ontology. The output includes pooled micro metrics, protein-averaged macro
+metrics, and E/L/M/U/Z counts. Generate `goparents` and
+`GO_do_no_annotate_list` once with `fpr_wrapper.py` before running large
+sweeps.
+
+```bash
+python fpr_metric_sweep.py \
+  -p predictions.csv \
+  -t Files/test_existing_annotations \
+  -r Files/test_new_annotations \
+  -n Files/GO_do_no_annotate_list \
+  -g goparents \
+  --predicted-format csv \
+  --tau-step 0.01 \
+  --tau-min 0 \
+  --tau-max 1 \
+  --workers 4 \
+  --log-level INFO \
+  --best-macro-output hgrs_best_macro.tsv \
+  --best-micro-output hgrs_best_micro.tsv \
+  -o hgrs_sweep.tsv
+```
+
+Directory mode is also supported:
+
+```bash
+python fpr_metric_sweep.py \
+  -d prediction_dir \
+  --glob '*.csv' \
+  -t Files/test_existing_annotations \
+  -r Files/test_new_annotations \
+  -n Files/GO_do_no_annotate_list \
+  -g goparents \
+  --predicted-format csv \
+  --tau-step 0.01 \
+  --log-level INFO \
+  --best-macro-output hgrs_best_macro.tsv \
+  --best-micro-output hgrs_best_micro.tsv \
+  -o hgrs_sweep.tsv
+```
+
+The full sweep file keeps one row per threshold and ontology. The optional
+best-threshold files retain the same columns but keep only one row per input
+file and ontology: `--best-macro-output` selects by highest `macro_f1`, and
+`--best-micro-output` selects by highest `micro_f1`. Ties are resolved by the
+higher threshold. Filenames are reported as basenames, and floating-point
+values are written with three decimal places.
+
+The prediction file is expected to contain protein, GO term, and score columns
+in columns 1, 2, and 3 by default. Use `--protein-col`, `--go-col`, and
+`--score-col` for different 0-based column positions.
+
+`precision`, `recall`, and `f1` are aliases for the micro-average values.
+`macro_precision`, `macro_recall`, and `macro_f1` average per-protein precision
+and recall using the same denominators as the original metric, scoped to each
+ontology.
+
+`--workers` uses process-based parallelism across threshold/ontology jobs.
+This can help when the threshold grid is large, but it increases memory use
+because each worker needs access to the parsed prediction and ontology state.
+Use `--log-level INFO` to report parsing counts, per-ontology term counts, and
+per-file runtime; use `--log-level WARNING` for quieter batch runs.
+
+---
+
 ## Output Formats
 
 ### Mapping File (`-o`)

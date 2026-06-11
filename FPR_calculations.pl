@@ -131,7 +131,7 @@ while (my $line=<NEW>){
     }
         
     next if ($go=~/GO:0005515|GO:0005488/);  # filter out binding and protein binding
-    if (exists $do_not_annotate{$id}{$go}){  #remove do_not_annotate terms
+    if (exists $do_not_annotate{$go}){  #remove do_not_annotate terms
         print STDERR "\-\-$id $go in the do_not_annotate list, removed from reference.\n";
         next;
     }
@@ -167,7 +167,7 @@ while (my $line=<FH>){
         print STDERR "\-\-$id $go already in existing_annotation, removed from predicted.\n";
         next;
     }
-    if (exists $do_not_annotate{$id}{$go}){    #remove do_not_annotate terms
+    if (exists $do_not_annotate{$go}){    #remove do_not_annotate terms
         print STDERR "\-\-$id $go in the do_not_annotate list, removed from predicted.\n";
         next;
     }
