@@ -283,6 +283,7 @@ python fpr_metric_sweep.py \
   -t Files/test_existing_annotations \
   -r Files/test_new_annotations \
   -n Files/GO_do_no_annotate_list \
+  --terms-of-interest GO_terms_of_interest \
   -g goparents \
   --predicted-format csv \
   --tau-step 0.01 \
@@ -292,6 +293,7 @@ python fpr_metric_sweep.py \
   --log-level INFO \
   --best-macro-output hgrs_best_macro.tsv \
   --best-micro-output hgrs_best_micro.tsv \
+  --map-output hgrs_lowest_tau.map \
   -o hgrs_sweep.tsv
 ```
 
@@ -304,6 +306,7 @@ python fpr_metric_sweep.py \
   -t Files/test_existing_annotations \
   -r Files/test_new_annotations \
   -n Files/GO_do_no_annotate_list \
+  --terms-of-interest GO_terms_of_interest \
   -g goparents \
   --predicted-format csv \
   --tau-step 0.01 \
@@ -315,23 +318,35 @@ python fpr_metric_sweep.py \
 
 The full sweep file keeps one row per threshold and ontology. The optional
 best-threshold files retain the same columns but keep only one row per input
-file and ontology: `--best-macro-output` selects by highest `macro_f1`, and
-`--best-micro-output` selects by highest `micro_f1`. Ties are resolved by the
+file and ontology: `--best-macro-output` selects by highest `f_macro`, and
+`--best-micro-output` selects by highest `f_micro`. Ties are resolved by the
 higher threshold. Filenames are reported as basenames, and floating-point
 values are written with three decimal places.
+
+In single-file mode, `--map-output` writes a debug mapping file for the lowest
+threshold rows after all filtering, thresholding, and redundancy removal. With
+the default `--tau-min 0`, this maps all retained predictions regardless of
+score. The mapping file includes `filename`, `ns`, `tau`, `id`, `predicted`,
+`map type`, and `reference`.
 
 The prediction file is expected to contain protein, GO term, and score columns
 in columns 1, 2, and 3 by default. Use `--protein-col`, `--go-col`, and
 `--score-col` for different 0-based column positions.
 
-`precision`, `recall`, and `f1` are aliases for the micro-average values.
-`macro_precision`, `macro_recall`, and `macro_f1` average per-protein precision
-and recall using the same denominators as the original metric, scoped to each
-ontology.
+Use `--terms-of-interest` to provide a one-column, no-header file of eligible
+GO IDs. When supplied, predictions and reference annotations outside that list
+are excluded before redundancy filtering and threshold sweeping. Existing
+annotations are not filtered by this list.
 
-`--workers` uses process-based parallelism across threshold/ontology jobs.
-This can help when the threshold grid is large, but it increases memory use
-because each worker needs access to the parsed prediction and ontology state.
+`pr_micro`, `rc_micro`, and `f_micro` are pooled-count micro-average metrics.
+`pr_macro`, `rc_macro`, and `f_macro` average per-protein precision and recall
+using the same denominators as the original metric, scoped to each ontology.
+
+`--workers` uses process-based parallelism across ontology-level incremental
+sweeps. More than 3 workers does not help when all three ontologies are
+evaluated, because there are only three ontology sweep jobs. For very large
+prediction files, process workers can exceed memory limits because each worker
+needs access to parsed prediction state.
 Use `--log-level INFO` to report parsing counts, per-ontology term counts, and
 per-file runtime; use `--log-level WARNING` for quieter batch runs.
 

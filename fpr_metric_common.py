@@ -13,6 +13,7 @@ from typing import Callable, DefaultDict
 
 GO_RE = re.compile(r"GO:\d+")
 BINDING_TERMS = {"GO:0005488", "GO:0005515"}
+GO_ROOT_TERMS = {"GO:0008150", "GO:0003674", "GO:0005575"}
 LOG_ENABLED = True
 
 AnnotationMap = dict[str, set[str]]
